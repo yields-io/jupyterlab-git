@@ -14,7 +14,7 @@ import tornado.locks
 import datetime
 
 from .log import get_logger
-from .content_manager import ContentManagerWrapper
+from .contents_manager import ContentsManagerWrapper
 
 
 # Regex pattern to capture (key, value) of Git configuration options.
@@ -172,7 +172,7 @@ class Git:
     """
 
     def __init__(self, contents_manager, config=None):
-        self.contents_manager = ContentManagerWrapper(contents_manager)
+        self.contents_manager = ContentsManagerWrapper(contents_manager)
         self._config = config
 
     def get_os_path(self, path):
@@ -1154,7 +1154,7 @@ class Git:
         """
         Get the file content of filename.
         """
-        relative_repo = os.path.relpath(top_repo_path, self.root_dir)
+        relative_repo = os.path.relpath(top_repo_path, self.contents_manager.root_dir)
         try:
             model = self.contents_manager.get(
                 path=os.path.join(relative_repo, filename)
