@@ -12,7 +12,7 @@ from packaging.version import parse
 
 from ._version import __version__
 from .git import DEFAULT_REMOTE_NAME
-
+from .content_manager import ContentManagerWrapper
 
 # Git configuration options exposed through the REST API
 ALLOWED_OPTIONS = ["user.name", "user.email"]
@@ -660,12 +660,12 @@ class GitDiffContentHandler(GitHandler):
 
     @web.authenticated
     async def post(self):
-        cm = self.contents_manager
+        cm = ContentManagerWrapper(self.contents_manager)
         data = self.get_json_body()
         filename = data["filename"]
         prev_ref = data["prev_ref"]
         curr_ref = data["curr_ref"]
-        top_repo_path = os.path.join(cm.root_dir, url2path(data["top_repo_path"]))
+        top_repo_path = cm.jupytergit_os_path(url2path(data["top_repo_path"]))
         response = await self.git.diff_content(
             filename, prev_ref, curr_ref, top_repo_path
         )
@@ -715,7 +715,7 @@ class GitSettingsHandler(GitHandler):
             )
         server_version = str(parse(__version__))
         # Similar to https://github.com/jupyter/nbdime/blob/master/nbdime/webapp/nb_server_extension.py#L90-L91
-        root_dir = getattr(self.contents_manager, "root_dir", None)
+        root_dir = ContentManagerWrapper(self.contents_manager).root_dir
         server_root = None if root_dir is None else Path(root_dir).as_posix()
         self.finish(
             json.dumps(
@@ -773,7 +773,7 @@ class GitServerRootHandler(GitHandler):
     @web.authenticated
     async def get(self):
         # Similar to https://github.com/jupyter/nbdime/blob/master/nbdime/webapp/nb_server_extension.py#L90-L91
-        root_dir = getattr(self.contents_manager, "root_dir", None)
+        root_dir = ContentManagerWrapper(self.contents_manager).root_dir
         server_root = None if root_dir is None else Path(root_dir).as_posix()
         self.finish(json.dumps({"server_root": server_root}))
 
