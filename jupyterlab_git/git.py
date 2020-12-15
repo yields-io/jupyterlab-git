@@ -160,6 +160,12 @@ class Git:
     def get_os_path(self, path):
         return self.contents_manager.jupytergit_os_path(path)
 
+    def get_cm_path(self, os_path):
+        return self.contents_manager.jupytergit_cm_path(os_path)
+
+    def get_top_repo_os_path(self, os_path):
+        return self.contents_manager.jupytergit_top_repo_os_path(os_path)
+
     async def config(self, top_repo_path, **kwargs):
         """Get or set Git options.
 
@@ -171,7 +177,7 @@ class Git:
             output = []
             for k, v in kwargs.items():
                 cmd = ["git", "config", "--add", k, v]
-                code, out, err = await execute(cmd, cwd=top_repo_path)
+                code, out, err = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
                 output.append(out.strip())
                 response["code"] = code
                 if code != 0:
@@ -182,7 +188,7 @@ class Git:
             response["message"] = "\n".join(output).strip()
         else:
             cmd = ["git", "config", "--list"]
-            code, output, error = await execute(cmd, cwd=top_repo_path)
+            code, output, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
             response = {"code": code}
 
             if code != 0:
@@ -434,7 +440,7 @@ class Git:
         Execute git diff command & return the result.
         """
         cmd = ["git", "diff", "--numstat", "-z"]
-        code, my_output, my_error = await execute(cmd, cwd=top_repo_path)
+        code, my_output, my_error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": my_error}
@@ -593,7 +599,7 @@ class Git:
             cwd=self.get_os_path(current_path),
         )
         if code == 0:
-            return {"code": code, "top_repo_path": my_output.strip("\n")}
+            return {"code": code, "top_repo_path": self.get_cm_path(my_output.strip("\n"))}
         else:
             return {
                 "code": code,
@@ -629,7 +635,7 @@ class Git:
             cmd = ["git", "add"] + list(filename)
         else:
             cmd = ["git", "add", filename]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -640,7 +646,7 @@ class Git:
         Execute git add all command & return the result.
         """
         cmd = ["git", "add", "-A"]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -651,7 +657,7 @@ class Git:
         Execute git add all unstaged command & return the result.
         """
         cmd = ["git", "add", "-u"]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -677,7 +683,7 @@ class Git:
         Execute git reset <filename> command & return the result.
         """
         cmd = ["git", "reset", "--", filename]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -688,7 +694,7 @@ class Git:
         Execute git reset command & return the result.
         """
         cmd = ["git", "reset"]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -699,7 +705,7 @@ class Git:
         Delete a specified commit from the repository.
         """
         cmd = ["git", "revert", "--no-commit", commit_id]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -712,7 +718,7 @@ class Git:
         cmd = ["git", "reset", "--hard"]
         if commit_id:
             cmd.append(commit_id)
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -778,7 +784,7 @@ class Git:
         Execute git checkout command for the filename & return the result.
         """
         cmd = ["git", "checkout", "--", filename]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -789,7 +795,7 @@ class Git:
         Execute git checkout command & return the result.
         """
         cmd = ["git", "checkout", "--", "."]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -800,7 +806,7 @@ class Git:
         Execute git commit <filename> command & return the result.
         """
         cmd = ["git", "commit", "-m", commit_msg]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -1038,7 +1044,7 @@ class Git:
         """
         command = ["git", "show", "{}:{}".format(ref, filename)]
 
-        code, output, error = await execute(command, cwd=top_repo_path)
+        code, output, error = await execute(command, cwd=self.get_top_repo_os_path(top_repo_path))
 
         error_messages = map(
             lambda n: n.lower(),
@@ -1129,7 +1135,7 @@ class Git:
             command = ["git", "diff", "--numstat", "--cached", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "--", filename]
         else:
             command = ["git", "diff", "--numstat", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", ref, "--", filename]  # where 4b825... is a magic SHA which represents the empty tree
-        code, output, error = await execute(command, cwd=top_repo_path)
+        code, output, error = await execute(command, cwd=self.get_top_repo_os_path(top_repo_path))
 
         if code != 0:
             err_msg = "fatal: Path '{}' does not exist (neither on disk nor in the index)".format(filename).lower()
@@ -1152,7 +1158,7 @@ class Git:
             Remote name; default "origin"
         """
         cmd = ["git", "remote", "add", name, url]
-        code, _, error = await execute(cmd, cwd=top_repo_path)
+        code, _, error = await execute(cmd, cwd=self.get_top_repo_os_path(top_repo_path))
         response = {
                 "code": code,
                 "command": " ".join(cmd)
@@ -1193,7 +1199,7 @@ class Git:
             Top Git repository path
         """
         try:
-            gitignore = pathlib.Path(top_repo_path) / ".gitignore"
+            gitignore = pathlib.Path(self.get_top_repo_os_path(top_repo_path)) / ".gitignore"
             if not gitignore.exists():
                 gitignore.touch()
             elif gitignore.stat().st_size > 0:
@@ -1217,7 +1223,7 @@ class Git:
             res = await self.ensure_gitignore(top_repo_path)
             if res["code"] != 0:
                 return res
-            gitignore = pathlib.Path(top_repo_path) / ".gitignore"
+            gitignore = pathlib.Path(self.get_top_repo_os_path(top_repo_path)) / ".gitignore"
             with gitignore.open("a") as f:
                 f.write(file_path + "\n")
         except BaseException as error:
