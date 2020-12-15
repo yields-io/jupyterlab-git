@@ -13,6 +13,7 @@ from packaging.version import parse
 from ._version import __version__
 from .git import DEFAULT_REMOTE_NAME
 from .contents_manager import ContentsManagerWrapper
+from .log import get_logger
 
 
 # Git configuration options exposed through the REST API
@@ -27,6 +28,10 @@ class GitHandler(APIHandler):
     @property
     def git(self):
         return self.settings["git"]
+
+    def prepare(self):
+        get_logger().debug(f"Handling request: {self.request.path}")
+        super().prepare()
 
 
 class GitCloneHandler(GitHandler):
