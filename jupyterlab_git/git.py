@@ -14,6 +14,7 @@ import tornado.locks
 import datetime
 
 from .log import get_logger
+from .contents_manager import ContentsManagerWrapper
 
 
 # Regex pattern to capture (key, value) of Git configuration options.
@@ -153,9 +154,11 @@ class Git:
     """
 
     def __init__(self, contents_manager, config=None):
-        self.contents_manager = contents_manager
-        self.root_dir = os.path.expanduser(contents_manager.root_dir)
+        self.contents_manager = ContentsManagerWrapper(contents_manager)
         self._config = config
+
+    def get_os_path(self, path):
+        return self.contents_manager.jupytergit_os_path(path)
 
     async def config(self, top_repo_path, **kwargs):
         """Get or set Git options.
@@ -227,7 +230,7 @@ class Git:
 
         response = {}
         try:
-            code, output, error = await execute(cmd, cwd=os.path.join(self.root_dir, current_path))
+            code, output, error = await execute(cmd, cwd=self.get_os_path(current_path))
         except subprocess.CalledProcessError as e:
             response["code"] = e.returncode
             response["message"] = e.output.decode("utf-8")
@@ -258,14 +261,14 @@ class Git:
                 ["git", "clone", unquote(repo_url), "-q"],
                 username=auth["username"],
                 password=auth["password"],
-                cwd=os.path.join(self.root_dir, current_path),
+                cwd=self.get_os_path(current_path),
                 env=env,
             )
         else:
             env["GIT_TERMINAL_PROMPT"] = "0"
             code, _, error = await execute(
                 ["git", "clone", unquote(repo_url)],
-                cwd=os.path.join(self.root_dir, current_path),
+                cwd=self.get_os_path(current_path),
                 env=env,
             )
 
@@ -282,7 +285,7 @@ class Git:
         """
         cmd = ["git", "status", "--porcelain", "-u", "-z"]
         code, my_output, my_error = await execute(
-            cmd, cwd=os.path.join(self.root_dir, current_path),
+            cmd, cwd=self.get_os_path(current_path),
         )
 
         if code != 0:
@@ -302,7 +305,7 @@ class Git:
             "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
         ]
         text_code, text_output, _ = await execute(
-            command, cwd=os.path.join(self.root_dir, current_path),
+            command, cwd=self.get_os_path(current_path),
         )
 
         are_binary = dict()
@@ -336,7 +339,7 @@ class Git:
             ("-%d" % history_count),
         ]
         code, my_output, my_error = await execute(
-            cmd, cwd=os.path.join(self.root_dir, current_path),
+            cmd, cwd=self.get_os_path(current_path),
         )
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": my_error}
@@ -376,7 +379,7 @@ class Git:
         """
         cmd = ["git", "log", "-1", "--numstat", "--oneline", "-z", selected_hash]
         code, my_output, my_error = await execute(
-            cmd, cwd=os.path.join(self.root_dir, current_path),
+            cmd, cwd=self.get_os_path(current_path),
         )
 
         if code != 0:
@@ -484,7 +487,7 @@ class Git:
         ]
 
         code, output, error = await execute(
-            cmd, cwd=os.path.join(self.root_dir, current_path)
+            cmd, cwd=self.get_os_path(current_path)
         )
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -552,7 +555,7 @@ class Git:
         ]
 
         code, output, error = await execute(
-            cmd, cwd=os.path.join(self.root_dir, current_path)
+            cmd, cwd=self.get_os_path(current_path)
         )
         if code != 0:
             return {"code": code, "command": " ".join(cmd), "message": error}
@@ -587,7 +590,7 @@ class Git:
         cmd = ["git", "rev-parse", "--show-toplevel"]
         code, my_output, my_error = await execute(
             cmd,
-            cwd=os.path.join(self.root_dir, current_path),
+            cwd=self.get_os_path(current_path),
         )
         if code == 0:
             return {"code": code, "top_repo_path": my_output.strip("\n")}
@@ -605,7 +608,7 @@ class Git:
         cmd = ["git", "rev-parse", "--show-prefix"]
         code, my_output, my_error = await execute(
             cmd,
-            cwd=os.path.join(self.root_dir, current_path),
+            cwd=self.get_os_path(current_path),
         )
         if code == 0:
             result = {"code": code, "under_repo_path": my_output.strip("\n")}
@@ -721,7 +724,7 @@ class Git:
         """
         cmd = ["git", "checkout", "-b", branchname, startpoint]
         code, my_output, my_error = await execute(
-            cmd, cwd=os.path.join(self.root_dir, current_path),
+            cmd, cwd=self.get_os_path(current_path),
         )
         if code == 0:
             return {"code": code, "message": my_output}
@@ -738,7 +741,7 @@ class Git:
         """
         code, my_output, _ = await execute(
             ["git", "rev-parse", "--symbolic-full-name", branchname],
-            cwd=os.path.join(self.root_dir, current_path),
+            cwd=self.get_os_path(current_path),
         )
         if code == 0:
             return my_output.strip("\n")
@@ -762,7 +765,7 @@ class Git:
             cmd = ["git", "checkout", branchname]
 
         code, my_output, my_error = await execute(
-            cmd, cwd=os.path.join(self.root_dir, current_path)
+            cmd, cwd=self.get_os_path(current_path)
         )
 
         if code == 0:
@@ -815,7 +818,7 @@ class Git:
                 ["git", "pull", "--no-commit"],
                 username=auth["username"],
                 password=auth["password"],
-                cwd=os.path.join(self.root_dir, curr_fb_path),
+                cwd=self.get_os_path(curr_fb_path),
                 env=env,
             )
         else:
@@ -823,7 +826,7 @@ class Git:
             code, output, error = await execute(
                 ["git", "pull", "--no-commit"],
                 env=env,
-                cwd=os.path.join(self.root_dir, curr_fb_path),
+                cwd=self.get_os_path(curr_fb_path),
             )
 
         response = {"code": code}
@@ -834,7 +837,7 @@ class Git:
             if cancel_on_conflict and has_conflict:
                 code, _, error = await execute(
                     ["git", "merge", "--abort"],
-                    cwd=os.path.join(self.root_dir, curr_fb_path)
+                    cwd=self.get_os_path(curr_fb_path)
                 )
                 if code == 0:
                     response["message"] = "Unable to pull latest changes as doing so would result in a merge conflict. In order to push your local changes, you may want to consider creating a new branch based on your current work and pushing the new branch. Provided your repository is hosted (e.g., on GitHub), once pushed, you can create a pull request against the original branch on the remote repository and manually resolve the conflicts during pull request review."
@@ -850,7 +853,7 @@ class Git:
     async def push(self, remote, branch, curr_fb_path, auth=None, set_upstream=False):
         """
         Execute `git push $UPSTREAM $BRANCH`. The choice of upstream and branch is up to the caller.
-        """        
+        """
         command = ["git", "push"]
         if set_upstream:
             command.append("--set-upstream")
@@ -863,7 +866,7 @@ class Git:
                 command,
                 username=auth["username"],
                 password=auth["password"],
-                cwd=os.path.join(self.root_dir, curr_fb_path),
+                cwd=self.get_os_path(curr_fb_path),
                 env=env,
             )
         else:
@@ -871,7 +874,7 @@ class Git:
             code, _, error = await execute(
                 command,
                 env=env,
-                cwd=os.path.join(self.root_dir, curr_fb_path),
+                cwd=self.get_os_path(curr_fb_path),
             )
 
         response = {"code": code}
@@ -886,7 +889,7 @@ class Git:
         Execute git init command & return the result.
         """
         cmd = ["git", "init"]
-        cwd = os.path.join(self.root_dir, current_path)
+        cwd = self.get_os_path(current_path)
         code, _, error = await execute(
             cmd, cwd=cwd
         )
@@ -945,7 +948,7 @@ class Git:
         """
         command = ["git", "symbolic-ref", "--short", "HEAD"]
         code, output, error = await execute(
-            command, cwd=os.path.join(self.root_dir, current_path)
+            command, cwd=self.get_os_path(current_path)
         )
         if code == 0:
             return output.strip()
@@ -964,7 +967,7 @@ class Git:
         """
         command = ["git", "branch", "-a"]
         code, output, error = await execute(
-            command, cwd=os.path.join(self.root_dir, current_path)
+            command, cwd=self.get_os_path(current_path)
         )
         if code == 0:
             for branch in output.splitlines():
@@ -990,7 +993,7 @@ class Git:
             "{}@{{upstream}}".format(branch_name),
         ]
         code, output, error = await execute(
-            command, cwd=os.path.join(self.root_dir, current_path)
+            command, cwd=self.get_os_path(current_path)
         )
         if code != 0:
             return {"code": code, "command": " ".join(command), "message": error}
@@ -998,7 +1001,7 @@ class Git:
 
         command = ["git", "config", "--local", "branch.{}.remote".format(branch_name)]
         code, output, error = await execute(
-            command, cwd=os.path.join(self.root_dir, current_path)
+            command, cwd=self.get_os_path(current_path)
         )
         if code != 0:
             return {"code": code, "command": " ".join(command), "message": error}
@@ -1014,7 +1017,7 @@ class Git:
         """
         command = ["git", "describe", "--tags", commit_sha]
         code, output, error = await execute(
-            command, cwd=os.path.join(self.root_dir, current_path)
+            command, cwd=self.get_os_path(current_path)
         )
         if code == 0:
             return output.strip()
@@ -1064,7 +1067,9 @@ class Git:
         """
         Get the file content of filename.
         """
-        relative_repo = os.path.relpath(top_repo_path, self.root_dir)
+        get_logger().debug(f"get_content: top_repo_path={top_repo_path}")
+        get_logger().debug(f"get_content: root_dir={self.contents_manager.root_dir}")
+        relative_repo = os.path.relpath(top_repo_path, self.contents_manager.root_dir)
         model = self.contents_manager.get(path=os.path.join(relative_repo, filename))
         return model["content"]
 
@@ -1152,7 +1157,7 @@ class Git:
                 "code": code,
                 "command": " ".join(cmd)
             }
-        
+
         if code != 0:
             response["message"] = error
 
@@ -1162,7 +1167,7 @@ class Git:
         """Handle call to `git remote show` command.
         Args:
             path (str): Git repository path
-        
+
         Returns:
             List[str]: Known remotes
         """
@@ -1180,14 +1185,14 @@ class Git:
         return response
 
     async def ensure_gitignore(self, top_repo_path):
-        """Handle call to ensure .gitignore file exists and the 
+        """Handle call to ensure .gitignore file exists and the
         next append will be on a new line (this means an empty file
         or a file ending with \n).
 
         top_repo_path: str
             Top Git repository path
         """
-        try:            
+        try:
             gitignore = pathlib.Path(top_repo_path) / ".gitignore"
             if not gitignore.exists():
                 gitignore.touch()
@@ -1206,7 +1211,7 @@ class Git:
         top_repo_path: str
             Top Git repository path
         file_path: str
-            The path of the file in .gitignore 
+            The path of the file in .gitignore
         """
         try:
             res = await self.ensure_gitignore(top_repo_path)
@@ -1240,7 +1245,7 @@ class Git:
             Git path repository
         """
         command = ["git", "tag", "--list"]
-        code, output, error = await execute(command, cwd=os.path.join(self.root_dir, current_path))
+        code, output, error = await execute(command, cwd=self.get_os_path(current_path))
         if code != 0:
             return {"code": code, "command": " ".join(command), "message": error}
         tags = [tag for tag in output.split("\n") if len(tag) > 0]
@@ -1255,7 +1260,7 @@ class Git:
             Tag to checkout
         """
         command = ["git", "checkout", "tags/" + tag]
-        code, _, error = await execute(command, cwd=os.path.join(self.root_dir, current_path))
+        code, _, error = await execute(command, cwd=self.get_os_path(current_path))
         if code == 0:
             return {"code": code, "message": "Tag {} checked out".format(tag)}
         else:

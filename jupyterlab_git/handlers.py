@@ -12,6 +12,7 @@ from packaging.version import parse
 
 from ._version import __version__
 from .git import DEFAULT_REMOTE_NAME
+from .contents_manager import ContentsManagerWrapper
 
 
 # Git configuration options exposed through the REST API
@@ -445,8 +446,8 @@ class GitPushHandler(GitHandler):
         """
         POST request handler,
         pushes committed files from your current branch to a remote branch
-        
-        Request body: 
+
+        Request body:
         {
             current_path: string, # Git repository path
             remote?: string # Remote to push to; i.e. <remote_name> or <remote_name>/<branch>
@@ -457,7 +458,7 @@ class GitPushHandler(GitHandler):
         known_remote = data.get("remote")
 
         current_local_branch = await self.git.get_current_branch(current_path)
-        
+
         set_upstream = False
         current_upstream_branch = await self.git.get_upstream_branch(
             current_path, current_local_branch
@@ -467,7 +468,7 @@ class GitPushHandler(GitHandler):
             set_upstream = current_upstream_branch['code'] != 0
 
             remote_name, _, remote_branch = known_remote.partition("/")
-            
+
             current_upstream_branch = {
                 "code": 0,
                 "remote_branch": remote_branch or current_local_branch,
@@ -498,10 +499,10 @@ class GitPushHandler(GitHandler):
 
             if default_remote is not None:
                 response = await self.git.push(
-                    default_remote, 
-                    current_local_branch, 
-                    current_path, 
-                    data.get("auth", None), 
+                    default_remote,
+                    current_local_branch,
+                    current_path,
+                    data.get("auth", None),
                     set_upstream=True,
                 )
             else:
@@ -557,8 +558,8 @@ class GitConfigHandler(GitHandler):
         """
         data = self.get_json_body()
         top_repo_path = data["path"]
-        options = data.get("options", {})        
-        
+        options = data.get("options", {})
+
         filtered_options = {k: v for k, v in options.items() if k in ALLOWED_OPTIONS}
         response = await self.git.config(top_repo_path, **filtered_options)
         if "options" in response:
@@ -579,12 +580,12 @@ class GitDiffContentHandler(GitHandler):
 
     @web.authenticated
     async def post(self):
-        cm = self.contents_manager
+        cm = ContentsManagerWrapper(self.contents_manager)
         data = self.get_json_body()
         filename = data["filename"]
         prev_ref = data["prev_ref"]
         curr_ref = data["curr_ref"]
-        top_repo_path = os.path.join(cm.root_dir, url2path(data["top_repo_path"]))
+        top_repo_path = cm.jupytergit_os_path(url2path(data["top_repo_path"]))
         response = await self.git.diff_content(
             filename, prev_ref, curr_ref, top_repo_path
         )
@@ -632,7 +633,7 @@ class GitSettingsHandler(GitHandler):
             self.log.debug("[jupyterlab_git] Failed to execute 'git' command: {!s}".format(error))
         server_version = str(parse(__version__))
         # Similar to https://github.com/jupyter/nbdime/blob/master/nbdime/webapp/nb_server_extension.py#L90-L91
-        root_dir = getattr(self.contents_manager, "root_dir", None)
+        root_dir = ContentsManagerWrapper(self.contents_manager).root_dir
         server_root = None if root_dir is None else Path(root_dir).as_posix()
         self.finish(
             json.dumps(
@@ -691,7 +692,7 @@ class GitServerRootHandler(GitHandler):
     @web.authenticated
     async def get(self):
         # Similar to https://github.com/jupyter/nbdime/blob/master/nbdime/webapp/nb_server_extension.py#L90-L91
-        root_dir = getattr(self.contents_manager, "root_dir", None)
+        root_dir = ContentsManagerWrapper(self.contents_manager).root_dir
         server_root = None if root_dir is None else Path(root_dir).as_posix()
         self.finish(json.dumps({"server_root": server_root}))
 
