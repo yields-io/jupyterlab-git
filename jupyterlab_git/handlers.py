@@ -14,6 +14,7 @@ from packaging.version import parse
 from ._version import __version__
 from .git import DEFAULT_REMOTE_NAME
 from .log import get_logger
+from .contents_manager import ContentsManagerWrapper
 
 # Git configuration options exposed through the REST API
 ALLOWED_OPTIONS = ["user.name", "user.email"]
@@ -27,6 +28,10 @@ class GitHandler(APIHandler):
     @property
     def git(self):
         return self.settings["git"]
+
+    def prepare(self):
+        get_logger().debug(f"Handling request: {self.request.path}")
+        super().prepare()
 
 
 class GitCloneHandler(GitHandler):
@@ -45,9 +50,7 @@ class GitCloneHandler(GitHandler):
             }
         """
         data = self.get_json_body()
-        response = await self.git.clone(
-            data["current_path"], data["clone_url"], data.get("auth", None)
-        )
+        response = await self.git.clone(data["current_path"], data["clone_url"], data.get("auth", None))
 
         if response["code"] != 0:
             self.set_status(500)
@@ -429,9 +432,7 @@ class GitCheckoutHandler(GitHandler):
         top_repo_path = data["top_repo_path"]
         if data["checkout_branch"]:
             if data["new_check"]:
-                body = await self.git.checkout_new_branch(
-                    data["branchname"], data["startpoint"], top_repo_path
-                )
+                body = await self.git.checkout_new_branch(data["branchname"], data["startpoint"], top_repo_path)
             else:
                 body = await self.git.checkout_branch(data["branchname"], top_repo_path)
         elif data["checkout_all"]:
@@ -532,9 +533,7 @@ class GitPushHandler(GitHandler):
         current_local_branch = await self.git.get_current_branch(current_path)
 
         set_upstream = False
-        current_upstream_branch = await self.git.get_upstream_branch(
-            current_path, current_local_branch
-        )
+        current_upstream_branch = await self.git.get_upstream_branch(current_path, current_local_branch)
 
         if known_remote is not None:
             set_upstream = current_upstream_branch["code"] != 0
@@ -584,9 +583,7 @@ class GitPushHandler(GitHandler):
             else:
                 response = {
                     "code": 128,
-                    "message": "fatal: The current branch {} has no upstream branch.".format(
-                        current_local_branch
-                    ),
+                    "message": "fatal: The current branch {} has no upstream branch.".format(current_local_branch),
                     "remotes": remotes,  # Returns the list of known remotes
                 }
 
@@ -642,9 +639,7 @@ class GitConfigHandler(GitHandler):
         filtered_options = {k: v for k, v in options.items() if k in ALLOWED_OPTIONS}
         response = await self.git.config(top_repo_path, **filtered_options)
         if "options" in response:
-            response["options"] = {
-                k: v for k, v in response["options"].items() if k in ALLOWED_OPTIONS
-            }
+            response["options"] = {k: v for k, v in response["options"].items() if k in ALLOWED_OPTIONS}
 
         if response["code"] != 0:
             self.set_status(500)
@@ -660,14 +655,12 @@ class GitContentHandler(GitHandler):
 
     @tornado.web.authenticated
     async def post(self):
-        cm = self.contents_manager
+        cm = ContentsManagerWrapper(self.contents_manager)
         data = self.get_json_body()
         filename = data["filename"]
         reference = data["reference"]
-        top_repo_path = os.path.join(cm.root_dir, url2path(data["top_repo_path"]))
-        response = await self.git.get_content_at_reference(
-            filename, reference, top_repo_path
-        )
+        top_repo_path = cm.jupytergit_os_path(url2path(data["top_repo_path"]))
+        response = await self.git.get_content_at_reference(filename, reference, top_repo_path)
         self.finish(json.dumps(response))
 
 
@@ -684,9 +677,7 @@ class GitDiffNotebookHandler(GitHandler):
             curr_content = data["currentContent"]
         except KeyError as e:
             get_logger().error(f"Missing key in POST request.", exc_info=e)
-            raise tornado.web.HTTPError(
-                status_code=400, reason=f"Missing POST key: {e}"
-            )
+            raise tornado.web.HTTPError(status_code=400, reason=f"Missing POST key: {e}")
         try:
             content = await self.git.get_nbdiff(prev_content, curr_content)
         except Exception as e:
@@ -736,12 +727,10 @@ class GitSettingsHandler(GitHandler):
         try:
             git_version = await self.git.version()
         except Exception as error:
-            self.log.debug(
-                "[jupyterlab_git] Failed to execute 'git' command: {!s}".format(error)
-            )
+            self.log.debug("[jupyterlab_git] Failed to execute 'git' command: {!s}".format(error))
         server_version = str(__version__)
         # Similar to https://github.com/jupyter/nbdime/blob/master/nbdime/webapp/nb_server_extension.py#L90-L91
-        root_dir = getattr(self.contents_manager, "root_dir", None)
+        root_dir = ContentsManagerWrapper(self.contents_manager).root_dir
         server_root = None if root_dir is None else Path(root_dir).as_posix()
         self.finish(
             json.dumps(
@@ -799,7 +788,7 @@ class GitServerRootHandler(GitHandler):
     @tornado.web.authenticated
     async def get(self):
         # Similar to https://github.com/jupyter/nbdime/blob/master/nbdime/webapp/nb_server_extension.py#L90-L91
-        root_dir = getattr(self.contents_manager, "root_dir", None)
+        root_dir = ContentsManagerWrapper(self.contents_manager).root_dir
         server_root = None if root_dir is None else Path(root_dir).as_posix()
         self.finish(json.dumps({"server_root": server_root}))
 
