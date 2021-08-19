@@ -4,15 +4,15 @@ Module with all the individual handlers, which execute git commands and return t
 import json
 import os
 from pathlib import Path
-from tornado import web
-
 from notebook.base.handlers import APIHandler
 from notebook.utils import url_path_join as ujoin, url2path
+import tornado
 from packaging.version import parse
 
 from ._version import __version__
 from .git import DEFAULT_REMOTE_NAME
-
+from .log import get_logger
+from .contents_manager import ContentsManagerWrapper
 
 # Git configuration options exposed through the REST API
 ALLOWED_OPTIONS = ["user.name", "user.email"]
@@ -27,9 +27,13 @@ class GitHandler(APIHandler):
     def git(self):
         return self.settings["git"]
 
+    def prepare(self):
+        get_logger().debug(f"Handling request: {self.request.path}")
+        super().prepare()
+
 
 class GitCloneHandler(GitHandler):
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         Handler for the `git clone`
@@ -44,9 +48,7 @@ class GitCloneHandler(GitHandler):
             }
         """
         data = self.get_json_body()
-        response = await self.git.clone(
-            data["current_path"], data["clone_url"], data.get("auth", None)
-        )
+        response = await self.git.clone(data["current_path"], data["clone_url"], data.get("auth", None))
 
         if response["code"] != 0:
             self.set_status(500)
@@ -63,7 +65,7 @@ class GitAllHistoryHandler(GitHandler):
     Called on refresh of extension's widget
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, calls individual handlers for
@@ -74,7 +76,7 @@ class GitAllHistoryHandler(GitHandler):
         history_count = body["history_count"]
 
         show_top_level = await self.git.show_top_level(current_path)
-        if show_top_level["code"] != 0:
+        if show_top_level.get("top_repo_path") is None:
             self.set_status(500)
             self.finish(json.dumps(show_top_level))
         else:
@@ -100,7 +102,7 @@ class GitShowTopLevelHandler(GitHandler):
     Displays the git root directory inside a repository.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, displays the git root directory inside a repository.
@@ -120,7 +122,7 @@ class GitShowPrefixHandler(GitHandler):
     with respect to the root directory.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, displays the prefix path of a directory in a repository,
@@ -139,7 +141,7 @@ class GitFetchHandler(GitHandler):
     Handler for 'git fetch'
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, fetch from remotes.
@@ -157,7 +159,7 @@ class GitStatusHandler(GitHandler):
     Handler for 'git status --porcelain', fetches the git status.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, fetches the git status.
@@ -176,7 +178,7 @@ class GitLogHandler(GitHandler):
     Fetches Commit SHA, Author Name, Commit Date & Commit Message.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler,
@@ -199,7 +201,7 @@ class GitDetailedLogHandler(GitHandler):
     deletions in that commit.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, fetches file names of committed files, Number of
@@ -220,7 +222,7 @@ class GitDiffHandler(GitHandler):
     Handler for 'git diff --numstat'. Fetches changes between commits & working tree.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, fetches differences between commits & current working
@@ -239,7 +241,7 @@ class GitBranchHandler(GitHandler):
     Handler for 'git branch -a'. Fetches list of all branches in current repository
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, fetches all branches in current repository.
@@ -257,7 +259,7 @@ class GitBranchDeleteHandler(GitHandler):
     Handler for 'git branch -D <branch>'
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, delete branch in current repository.
@@ -283,7 +285,7 @@ class GitAddHandler(GitHandler):
     Adds one or all files to the staging area.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, adds one or all files into the staging area.
@@ -307,7 +309,7 @@ class GitAddAllUnstagedHandler(GitHandler):
     untracked or staged files.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, adds all the changed files.
@@ -324,7 +326,7 @@ class GitAddAllUntrackedHandler(GitHandler):
     untracked files, does not touch unstaged or staged files.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, adds all the untracked files.
@@ -338,7 +340,7 @@ class GitAddAllUntrackedHandler(GitHandler):
 class GitRemoteAddHandler(GitHandler):
     """Handler for 'git remote add <name> <url>'."""
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """POST request handler to add a remote."""
         data = self.get_json_body()
@@ -359,7 +361,7 @@ class GitResetHandler(GitHandler):
     Moves one or all files from the staged to the unstaged area.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler,
@@ -384,7 +386,7 @@ class GitDeleteCommitHandler(GitHandler):
     Deletes the specified commit from the repository, leaving history intact.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         data = self.get_json_body()
         top_repo_path = data["top_repo_path"]
@@ -402,7 +404,7 @@ class GitResetToCommitHandler(GitHandler):
     Deletes all commits from head to the specified commit, making the specified commit the new head.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         data = self.get_json_body()
         top_repo_path = data["top_repo_path"]
@@ -419,7 +421,7 @@ class GitCheckoutHandler(GitHandler):
     Handler for 'git checkout <branchname>'. Changes the current working branch.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, changes between branches.
@@ -428,9 +430,7 @@ class GitCheckoutHandler(GitHandler):
         top_repo_path = data["top_repo_path"]
         if data["checkout_branch"]:
             if data["new_check"]:
-                body = await self.git.checkout_new_branch(
-                    data["branchname"], data["startpoint"], top_repo_path
-                )
+                body = await self.git.checkout_new_branch(data["branchname"], data["startpoint"], top_repo_path)
             else:
                 body = await self.git.checkout_branch(data["branchname"], top_repo_path)
         elif data["checkout_all"]:
@@ -448,7 +448,7 @@ class GitCommitHandler(GitHandler):
     Handler for 'git commit -m <message>'. Commits files.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, commits files.
@@ -464,7 +464,7 @@ class GitCommitHandler(GitHandler):
 
 
 class GitUpstreamHandler(GitHandler):
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         Handler for the `git rev-parse --abbrev-ref $CURRENT_BRANCH_NAME@{upstream}` on the repo. Used to check if there
@@ -488,7 +488,7 @@ class GitPullHandler(GitHandler):
     Handler for 'git pull'. Pulls files from a remote branch.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, pulls files from a remote branch to your current branch.
@@ -512,7 +512,7 @@ class GitPushHandler(GitHandler):
     Pushes committed files to a remote branch.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler,
@@ -531,9 +531,7 @@ class GitPushHandler(GitHandler):
         current_local_branch = await self.git.get_current_branch(current_path)
 
         set_upstream = False
-        current_upstream_branch = await self.git.get_upstream_branch(
-            current_path, current_local_branch
-        )
+        current_upstream_branch = await self.git.get_upstream_branch(current_path, current_local_branch)
 
         if known_remote is not None:
             set_upstream = current_upstream_branch["code"] != 0
@@ -583,9 +581,7 @@ class GitPushHandler(GitHandler):
             else:
                 response = {
                     "code": 128,
-                    "message": "fatal: The current branch {} has no upstream branch.".format(
-                        current_local_branch
-                    ),
+                    "message": "fatal: The current branch {} has no upstream branch.".format(current_local_branch),
                     "remotes": remotes,  # Returns the list of known remotes
                 }
 
@@ -600,7 +596,7 @@ class GitInitHandler(GitHandler):
     Handler for 'git init'. Initializes a repository.
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, initializes a repository.
@@ -615,7 +611,7 @@ class GitInitHandler(GitHandler):
 
 
 class GitChangedFilesHandler(GitHandler):
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         body = await self.git.changed_files(**self.get_json_body())
 
@@ -629,7 +625,7 @@ class GitConfigHandler(GitHandler):
     Handler for 'git config' commands
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST get (if no options are passed) or set configuration options
@@ -641,9 +637,7 @@ class GitConfigHandler(GitHandler):
         filtered_options = {k: v for k, v in options.items() if k in ALLOWED_OPTIONS}
         response = await self.git.config(top_repo_path, **filtered_options)
         if "options" in response:
-            response["options"] = {
-                k: v for k, v in response["options"].items() if k in ALLOWED_OPTIONS
-            }
+            response["options"] = {k: v for k, v in response["options"].items() if k in ALLOWED_OPTIONS}
 
         if response["code"] != 0:
             self.set_status(500)
@@ -652,24 +646,45 @@ class GitConfigHandler(GitHandler):
         self.finish(json.dumps(response))
 
 
-class GitDiffContentHandler(GitHandler):
+class GitContentHandler(GitHandler):
     """
-    Handler for plain text diffs. Uses git show $REF:$FILE
-    Returns `prev_content` and `curr_content` with content of given file.
+    Handler to get file content at a certain git reference
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
-        cm = self.contents_manager
+        cm = ContentsManagerWrapper(self.contents_manager)
         data = self.get_json_body()
         filename = data["filename"]
-        prev_ref = data["prev_ref"]
-        curr_ref = data["curr_ref"]
-        top_repo_path = os.path.join(cm.root_dir, url2path(data["top_repo_path"]))
-        response = await self.git.diff_content(
-            filename, prev_ref, curr_ref, top_repo_path
-        )
+        reference = data["reference"]
+        top_repo_path = cm.jupytergit_os_path(url2path(data["top_repo_path"]))
+        response = await self.git.get_content_at_reference(filename, reference, top_repo_path)
         self.finish(json.dumps(response))
+
+
+class GitDiffNotebookHandler(GitHandler):
+    """
+    Returns nbdime diff of given notebook base content and remote content
+    """
+
+    @tornado.web.authenticated
+    async def post(self):
+        data = self.get_json_body()
+        try:
+            prev_content = data["previousContent"]
+            curr_content = data["currentContent"]
+        except KeyError as e:
+            get_logger().error(f"Missing key in POST request.", exc_info=e)
+            raise tornado.web.HTTPError(status_code=400, reason=f"Missing POST key: {e}")
+        try:
+            content = await self.git.get_nbdiff(prev_content, curr_content)
+        except Exception as e:
+            get_logger().error(f"Error computing notebook diff.", exc_info=e)
+            raise tornado.web.HTTPError(
+                status_code=500,
+                reason=f"Error diffing content: {e}.",
+            ) from e
+        self.finish(json.dumps(content))
 
 
 class GitIgnoreHandler(GitHandler):
@@ -677,7 +692,7 @@ class GitIgnoreHandler(GitHandler):
     Handler to manage .gitignore
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST add entry in .gitignore
@@ -701,7 +716,7 @@ class GitIgnoreHandler(GitHandler):
 
 
 class GitSettingsHandler(GitHandler):
-    @web.authenticated
+    @tornado.web.authenticated
     async def get(self):
         jlab_version = self.get_query_argument("version", None)
         if jlab_version is not None:
@@ -710,12 +725,10 @@ class GitSettingsHandler(GitHandler):
         try:
             git_version = await self.git.version()
         except Exception as error:
-            self.log.debug(
-                "[jupyterlab_git] Failed to execute 'git' command: {!s}".format(error)
-            )
-        server_version = str(parse(__version__))
+            self.log.debug("[jupyterlab_git] Failed to execute 'git' command: {!s}".format(error))
+        server_version = str(__version__)
         # Similar to https://github.com/jupyter/nbdime/blob/master/nbdime/webapp/nb_server_extension.py#L90-L91
-        root_dir = getattr(self.contents_manager, "root_dir", None)
+        root_dir = ContentsManagerWrapper(self.contents_manager).root_dir
         server_root = None if root_dir is None else Path(root_dir).as_posix()
         self.finish(
             json.dumps(
@@ -734,7 +747,7 @@ class GitTagHandler(GitHandler):
     Handler for 'git tag '. Fetches list of all tags in current repository
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, fetches all tags in current repository.
@@ -752,7 +765,7 @@ class GitTagCheckoutHandler(GitHandler):
     Handler for 'git tag checkout '. Checkout the tag version of repo
     """
 
-    @web.authenticated
+    @tornado.web.authenticated
     async def post(self):
         """
         POST request handler, checkout the tag version to a branch.
@@ -770,10 +783,10 @@ class GitTagCheckoutHandler(GitHandler):
 # FIXME remove for 0.22 release - this avoid error when upgrading from 0.20 to 0.21 if the frontend
 # has not been rebuilt yet.
 class GitServerRootHandler(GitHandler):
-    @web.authenticated
+    @tornado.web.authenticated
     async def get(self):
         # Similar to https://github.com/jupyter/nbdime/blob/master/nbdime/webapp/nb_server_extension.py#L90-L91
-        root_dir = getattr(self.contents_manager, "root_dir", None)
+        root_dir = ContentsManagerWrapper(self.contents_manager).root_dir
         server_root = None if root_dir is None else Path(root_dir).as_posix()
         self.finish(json.dumps({"server_root": server_root}))
 
@@ -796,10 +809,11 @@ def setup_handlers(web_app):
         ("/git/clone", GitCloneHandler),
         ("/git/commit", GitCommitHandler),
         ("/git/config", GitConfigHandler),
+        ("/git/content", GitContentHandler),
         ("/git/delete_commit", GitDeleteCommitHandler),
         ("/git/detailed_log", GitDetailedLogHandler),
         ("/git/diff", GitDiffHandler),
-        ("/git/diffcontent", GitDiffContentHandler),
+        ("/git/diffnotebook", GitDiffNotebookHandler),
         ("/git/init", GitInitHandler),
         ("/git/log", GitLogHandler),
         ("/git/pull", GitPullHandler),
