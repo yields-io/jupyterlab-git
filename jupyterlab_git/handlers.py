@@ -53,7 +53,10 @@ class GitHandler(APIHandler):
         ):
             _, cm, path = hybridcontents.hybridmanager._resolve_path(path, cm.managers)
 
-        local_path = os.path.join(os.path.expanduser(cm.root_dir), url2path(path))
+        if hasattr(cm, "jupytergit_os_path"):
+            local_path = cm.jupytergit_os_path(path)
+        else:
+            local_path = os.path.join(os.path.expanduser(cm.root_dir), url2path(path))
         return (local_path, cm) if with_contents_manager else local_path
 
 
